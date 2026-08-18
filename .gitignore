@@ -1,0 +1,6 @@
+/bin/
+/dist/
+# `--record` writes recordings to the working directory; testdata/*.sse are
+# committed fixtures and must NOT be caught by this.
+/*.sse
+.env

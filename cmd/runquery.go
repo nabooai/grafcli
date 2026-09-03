@@ -13,8 +13,9 @@ import (
 
 func newRunQueryCmd() *cobra.Command {
 	var (
-		asJSON  bool
-		compact bool
+		asJSON   bool
+		compact  bool
+		question string
 	)
 	c := &cobra.Command{
 		Use:   "run-query <graphql>",
@@ -28,6 +29,9 @@ warning. "graf query" is the bare serve; this is what the model sees.
 Pass "-" to read the query from stdin. Warnings are repeated on stderr: a
 non-empty list means the rows may be a SUBSET — never report a flagged
 result as the whole population.
+
+Pass --question with the user's question when you have it: the tool exempts
+the question's literals from its invented-literal check, as inside the agent.
 
 When the graph rejects the query, the tool's error text (which names the
 valid fields) goes to stderr with exit code 14 — fix the query, do not retry
@@ -47,7 +51,7 @@ it unchanged. No tokens are spent.`,
 			if err != nil {
 				return err
 			}
-			res, err := client.RunQueryTool(ctx, query)
+			res, err := client.RunQueryTool(ctx, query, question)
 			if err != nil {
 				return err
 			}
@@ -79,5 +83,6 @@ it unchanged. No tokens are spent.`,
 	}
 	c.Flags().BoolVar(&asJSON, "json", false, "Emit {query, output} (output as a string) instead of the envelope")
 	c.Flags().BoolVar(&compact, "compact", false, "Print the envelope on one line instead of indenting")
+	c.Flags().StringVar(&question, "question", "", "The question this query answers (its literals are exempt from the grounding check)")
 	return c
 }

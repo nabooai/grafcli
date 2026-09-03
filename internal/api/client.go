@@ -525,10 +525,17 @@ func (c *Client) Explore(ctx context.Context, intent, question string) (ToolResu
 // RunQueryTool runs the agent's run_query tool. Its output is the envelope the
 // agent reads: a JSON object {warnings, data, ...} on success, or a plain-text
 // "Query errors:" block naming the valid fields when the graph rejects the query.
-func (c *Client) RunQueryTool(ctx context.Context, query string) (ToolResult, error) {
+//
+// question, when non-empty, is the user's question the query answers: the
+// tool exempts its literals from the invented-literal check, exactly as inside
+// the agent loop.
+func (c *Client) RunQueryTool(ctx context.Context, query, question string) (ToolResult, error) {
+	in := map[string]string{"query": query}
+	if question != "" {
+		in["question"] = question
+	}
 	var out ToolResult
-	err := c.sendJSON(ctx, http.MethodPost, "/api/cli/run_query",
-		map[string]string{"query": query}, &out)
+	err := c.sendJSON(ctx, http.MethodPost, "/api/cli/run_query", in, &out)
 	return out, err
 }
 

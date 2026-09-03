@@ -44,7 +44,7 @@ func cliServer(t *testing.T) (*httptest.Server, *string) {
 		var in map[string]string
 		json.NewDecoder(r.Body).Decode(&in)
 		w.Header().Set("Content-Type", "application/json")
-		output := `{"warnings": ["scope-bounded"], "data": {"github": {"listReleases": [{"id": 1}]}}}`
+		output := `{"warnings": ["scope-bounded"], "data": {"github": {"listReleases": [{"id": 1}]}}, "q": "` + in["question"] + `"}`
 		if strings.Contains(in["query"], "noSuchRoot") {
 			output = "Query errors:\nCannot query field 'noSuchRoot' on type 'Query'."
 		}
@@ -129,6 +129,10 @@ func TestRunQueryPrintsTheEnvelopeAndMapsErrors(t *testing.T) {
 	}
 	if !strings.Contains(out, `"listReleases"`) || !strings.Contains(out, `"warnings"`) {
 		t.Errorf("stdout = %q", out)
+	}
+	out, err = run(t, "run-query", "{ github { listReleases { id } } }", "--compact", "--question", "which releases?")
+	if err != nil || !strings.Contains(out, `"q":"which releases?"`) {
+		t.Errorf("--question not passed through: %q (%v)", out, err)
 	}
 	out, err = run(t, "run-query", "{ noSuchRoot { id } }")
 	var ce *clierr.Error

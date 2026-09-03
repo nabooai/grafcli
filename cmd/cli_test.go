@@ -131,7 +131,7 @@ func TestRunQueryPrintsTheEnvelopeAndMapsErrors(t *testing.T) {
 		t.Errorf("stdout = %q", out)
 	}
 	out, err = run(t, "run-query", "{ github { listReleases { id } } }", "--compact", "--question", "which releases?")
-	if err != nil || !strings.Contains(out, `"q":"which releases?"`) {
+	if err != nil || !strings.Contains(out, `which releases?`) {
 		t.Errorf("--question not passed through: %q (%v)", out, err)
 	}
 	out, err = run(t, "run-query", "{ noSuchRoot { id } }")

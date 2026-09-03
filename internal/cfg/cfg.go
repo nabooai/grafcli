@@ -12,10 +12,27 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// IsLoopback reports whether baseURL points at this machine — the one place a
+// missing credential is not an error.
+func IsLoopback(baseURL string) bool {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
 
 const (
 	// DefaultBaseURL is the deployment the CLI talks to when nothing overrides
@@ -46,6 +63,9 @@ const (
 	// you get by copying a request out of devtools. Short-lived — service
 	// tokens are the supported path — but it unblocks a one-off.
 	EnvCookie = "GRAF_CF_AUTHORIZATION"
+	// EnvAPIToken is the deployment's own bearer token — the one the graf serve
+	// checks on its /api/cli endpoints (GRAF_API_TOKEN on the server side).
+	EnvAPIToken = "GRAF_API_TOKEN"
 )
 
 // Config is the on-disk settings file. Secrets are excluded by construction.

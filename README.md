@@ -22,7 +22,20 @@ on a prompt. See [AGENTS.md](AGENTS.md) for the agent-facing guide.
 
 ## Install
 
-Build from source (Go 1.22+):
+Run it from anywhere with `uv` — no Go toolchain, no clone:
+
+```sh
+uvx --from git+https://github.com/nabooai/grafcli graf ask "what shipped last week?"
+uv tool install git+https://github.com/nabooai/grafcli      # puts `graf` on PATH
+```
+
+`uvx` installs a tiny Python launcher that fetches the release binary for your
+OS/arch into `~/.graf/bin/` on first run (the repository is private, so it
+needs a GitHub token: `gh auth login`, or `GH_TOKEN`) and execs it; when no
+release is reachable it builds from the sources shipped inside the wheel,
+given a Go toolchain on PATH. `GRAF_BIN=/path/to/graf` skips all of that.
+
+Or build from source (Go 1.22+):
 
 ```sh
 make build     # ./bin/graf
@@ -56,9 +69,22 @@ graf auth status                           # who am I, and does it work?
 Credentials are never accepted as command-line arguments — argv is readable by
 every other process on the machine.
 
+The harness commands (`steer`, `explore`, `run-query`, `harness`) additionally
+carry the deployment's **own** bearer token when it sets one (`GRAF_API_TOKEN`
+on the server). Store it the same way — it is merged with whatever is already
+stored, so the two halves can be added separately:
+
+```sh
+echo "GRAF_API_TOKEN=..." | graf auth login --with-token
+```
+
+A deployment on this machine (`--url http://127.0.0.1:8007`) needs no
+credential at all.
+
 | Variable | Holds |
 |---|---|
 | `GRAF_CF_ACCESS_CLIENT_ID` / `..._SECRET` | the service token |
+| `GRAF_API_TOKEN` | the deployment's own bearer token (its `/api/cli` gate) |
 | `CLOUDFLARE_ACCESS_CLIENT_ID` / `..._SECRET` | the same, under Cloudflare's own spelling |
 | `GRAF_CF_AUTHORIZATION` | a browser-issued `CF_Authorization` JWT, for a one-off |
 | `GRAF_URL` | the deployment to talk to |
@@ -70,7 +96,8 @@ every other process on the machine.
 | Path | Holds |
 |---|---|
 | `~/.graf/config.json` | settings (`base_url`, `model`, `reasoning`, `fda_version`) |
-| `~/.graf/.credentials.json` | credentials, mode `0600` |
+| `~/.graf/.credentials.json` | credentials (service token and/or API token), mode `0600` |
+| `~/.graf/bin/` | binaries the `uvx` launcher fetched or built |
 
 `config set` rewrites only its own keys and leaves everything else in the file
 untouched; it refuses outright if the file cannot be parsed, rather than
@@ -110,6 +137,40 @@ graf ask "how many jira issues?" --json | jq -r .queries[0] | graf query -
 Read the warnings `graf query` prints to stderr. A capped or truncated result
 means the rows are a **subset**, and presenting that as the whole answer is a
 wrong answer, not a shortcut.
+
+## The harness, one stage at a time
+
+`graf ask` streams a conversation with the agent. The same answering pipeline
+is also exposed stage by stage, against the server's `/api/cli` endpoints —
+which is how you find out *why* an answer came out the way it did, and how a
+script reuses just the stage it needs:
+
+```sh
+graf steer "what is new with saki?"          # what the agent is TOLD before it picks a tool (free)
+graf explore "open PRs in the api repo"      # its explore_schema tool: ranked, validated query options
+graf run-query '{ github { listPullRequestsCount } }'   # its run_query tool: the envelope the agent reads (free)
+graf harness "how many open PRs are there?"  # the whole pipeline single-shot, with receipts
+```
+
+`steer` prints one block per steer — a pasted URL resolved to the entity it
+names, a loose word matched to the stored values it could mean:
+
+```
+## name_hits
+Name hits — real stored values. `Type(field: "value")` is a copyable filter; `@root` serves it…
+saki: no stored value is spelled that — likely a typo for:
+  CustomerChannel(key: "SKAI::production-skai") @customerChannels …
+```
+
+`run-query` differs from `query` in that it goes through the agent's tool: the
+envelope carries `warnings`, `generation` (which snapshot answered), pre-resolved
+`<field>__resolved` siblings for reference ids, and whole-row truncation. A
+rejected query prints the tool's error text — which names the valid fields —
+on stderr with exit 14.
+
+`harness --json` returns `{answer, ungrounded, steers, tools, queries}`: the
+answer plus every receipt that produced it. It is stateless (no conversation is
+kept) and bounded by `--max-turns` and the server's timeout.
 
 ## Conversations
 

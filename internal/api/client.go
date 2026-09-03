@@ -100,6 +100,9 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body []byt
 	if c.Creds.Cookie != "" {
 		req.Header.Set("Cookie", "CF_Authorization="+c.Creds.Cookie)
 	}
+	if c.Creds.APIToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Creds.APIToken)
+	}
 	if c.Debug != nil {
 		fmt.Fprintf(c.Debug, "> %s %s (auth: %s)\n", method, req.URL, c.authKind())
 	}
@@ -107,13 +110,20 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body []byt
 }
 
 func (c *Client) authKind() string {
+	var parts []string
 	switch {
 	case c.Creds.ClientID != "":
-		return "service token " + auth.Redact(c.Creds.ClientID)
+		parts = append(parts, "service token "+auth.Redact(c.Creds.ClientID))
 	case c.Creds.Cookie != "":
-		return "CF_Authorization cookie"
+		parts = append(parts, "CF_Authorization cookie")
 	}
-	return "none"
+	if c.Creds.APIToken != "" {
+		parts = append(parts, "bearer "+auth.Redact(c.Creds.APIToken))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, " + ")
 }
 
 // do executes a request and maps a non-2xx response onto the exit-code table.
@@ -458,4 +468,97 @@ func (c *Client) SecretNames(ctx context.Context) ([]string, error) {
 // they arrive from the caller and must not be able to escape the path.
 func urlSeg(s string) string {
 	return strings.NewReplacer("/", "%2F", "?", "%3F", "#", "%23", " ", "%20").Replace(s)
+}
+
+// ── The answering harness, one stage at a time (/api/cli/*) ─────────────────
+//
+// These are the graf serve's CLI endpoints: the same steer → explore →
+// run_query → answer pipeline the /build page runs, exposed per stage. They are
+// gated by the deployment's own bearer token (GRAF_API_TOKEN) when it sets one.
+
+// Steer is one thing the agent is TOLD about a question before it picks a
+// tool — a fact the store proves (a URL resolved to its entity, a name matched
+// to stored values). Kind names the producer.
+type Steer struct {
+	Kind string `json:"kind"`
+	Text string `json:"text"`
+}
+
+// SteerResult is the response of POST /api/cli/steer.
+type SteerResult struct {
+	Question string  `json:"question"`
+	Steers   []Steer `json:"steers"`
+	// Input is the exact turn input the steers shape: the question followed by
+	// one message per steer, as the model would receive it.
+	Input json.RawMessage `json:"input"`
+}
+
+// Steer returns what the agent would be told about question, without running it.
+func (c *Client) Steer(ctx context.Context, question string) (SteerResult, error) {
+	var out SteerResult
+	err := c.sendJSON(ctx, http.MethodPost, "/api/cli/steer",
+		map[string]string{"question": question}, &out)
+	return out, err
+}
+
+// ToolResult is the response of the two tool endpoints: the tool's output,
+// byte-identical to what the agent reads.
+type ToolResult struct {
+	Intent string `json:"intent,omitempty"`
+	Query  string `json:"query,omitempty"`
+	Output string `json:"output"`
+}
+
+// Explore runs the agent's explore_schema tool: ranked, validated query
+// options for an intent. question, when non-empty, is the raw question the
+// intent paraphrases (the tool harvests its literals). Spends tokens.
+func (c *Client) Explore(ctx context.Context, intent, question string) (ToolResult, error) {
+	in := map[string]string{"intent": intent}
+	if question != "" {
+		in["question"] = question
+	}
+	var out ToolResult
+	err := c.sendJSON(ctx, http.MethodPost, "/api/cli/explore", in, &out)
+	return out, err
+}
+
+// RunQueryTool runs the agent's run_query tool. Its output is the envelope the
+// agent reads: a JSON object {warnings, data, ...} on success, or a plain-text
+// "Query errors:" block naming the valid fields when the graph rejects the query.
+func (c *Client) RunQueryTool(ctx context.Context, query string) (ToolResult, error) {
+	var out ToolResult
+	err := c.sendJSON(ctx, http.MethodPost, "/api/cli/run_query",
+		map[string]string{"query": query}, &out)
+	return out, err
+}
+
+// HarnessRequest is the body of POST /api/cli/ask.
+type HarnessRequest struct {
+	Question string `json:"question"`
+	Model    string `json:"model,omitempty"`
+	MaxTurns int    `json:"max_turns,omitempty"`
+}
+
+// ToolCall is one tool the agent invoked during a harness run.
+type ToolCall struct {
+	Tool string          `json:"tool"`
+	Args json.RawMessage `json:"args"`
+}
+
+// HarnessResult is the response of POST /api/cli/ask: the answer plus the
+// receipts — what the agent was told, what it called, the GraphQL it ran.
+type HarnessResult struct {
+	Answer     string     `json:"answer"`
+	Ungrounded []string   `json:"ungrounded"`
+	Steers     []Steer    `json:"steers"`
+	Tools      []ToolCall `json:"tools"`
+	Queries    []string   `json:"queries"`
+}
+
+// Harness runs the entire answering pipeline single-shot (no conversation is
+// kept). Spends tokens; bounded by the server's turn cap and timeout.
+func (c *Client) Harness(ctx context.Context, req HarnessRequest) (HarnessResult, error) {
+	var out HarnessResult
+	err := c.sendJSON(ctx, http.MethodPost, "/api/cli/ask", req, &out)
+	return out, err
 }

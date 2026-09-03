@@ -115,7 +115,7 @@ func Usagef(format string, args ...any) *Error {
 
 // NotLoggedIn is returned whenever no usable credential is available.
 func NotLoggedIn() *Error {
-	return New("unauthenticated", Unauthenticated, "no Cloudflare Access credential").
-		WithHint("set GRAF_CF_ACCESS_CLIENT_ID and GRAF_CF_ACCESS_CLIENT_SECRET, put them in .env, or store them with auth login").
+	return New("unauthenticated", Unauthenticated, "no credential (Cloudflare Access service token or GRAF_API_TOKEN)").
+		WithHint("set GRAF_CF_ACCESS_CLIENT_ID and GRAF_CF_ACCESS_CLIENT_SECRET and/or GRAF_API_TOKEN, put them in .env, or store them with auth login").
 		WithFix("graf auth login --with-token")
 }

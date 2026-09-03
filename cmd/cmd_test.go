@@ -92,7 +92,8 @@ func TestManifestNeedsNoCredential(t *testing.T) {
 			t.Errorf("command %q has no description", c.Name)
 		}
 	}
-	for _, want := range []string{"ask", "query", "schema", "chats", "auth", "config", "doctor", "sources"} {
+	for _, want := range []string{"ask", "query", "schema", "chats", "auth", "config", "doctor", "sources",
+		"steer", "explore", "run-query", "harness"} {
 		if !found[want] {
 			t.Errorf("manifest omits the %q command", want)
 		}

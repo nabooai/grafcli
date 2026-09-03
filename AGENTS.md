@@ -12,7 +12,16 @@ It needs no credential and makes no network request.
 | You want | Use | Cost |
 |---|---|---|
 | A question answered from data you cannot address yet | `graf ask` | tokens + seconds |
-| Rows from a query you already know | `graf query` | one HTTP request |
+| The same, single-shot, with receipts (`--json`: steers, tools, queries) | `graf harness` | tokens + seconds |
+| To know what the agent is TOLD about a question (URL facts, name hits) | `graf steer` | one HTTP request |
+| Ranked, validated query options for an intent (the agent's `explore_schema`) | `graf explore` | tokens |
+| Rows through the agent's `run_query` tool (warnings, resolved ids, snapshot) | `graf run-query` | one HTTP request |
+| Rows from a query you already know, bare | `graf query` | one HTTP request |
+
+When an answer looks wrong, run `graf steer` on the question first: the steers
+are the real stored values the agent was pointed at, and a typo or an
+ambiguous name shows up there. `graf explore` then shows the query options it
+chose between. Both are what a person would look at before blaming the model.
 
 Prefer `graf query`. Use `graf ask` to *discover* the query, then reuse it:
 
@@ -41,6 +50,13 @@ the GraphQL the agent actually ran — the most reusable thing a turn produces.
 
 - **Never pass a credential on argv.** There is no `--token` flag. Use the
   environment, a `.env`, or `graf auth login --with-token` reading stdin.
+  The harness commands need the deployment's own bearer token too when it
+  sets one: `GRAF_API_TOKEN` (env, `.env`, or stored the same way). A
+  loopback `--url` needs no credential.
+- **`run-query` exit 14 carries the tool's error text.** It names the valid
+  fields; fix the query, do not retry it unchanged. Exit 10 from `harness`
+  after a long wait is usually the server's turn cap — raise `--max-turns`
+  or narrow the question.
 - **A question is one argument.** `graf ask "why did X fail?"` — quote it, or
   pipe it with `graf ask -`.
 - **Do not pipe when you can flag.** `--json`, `--limit` and `--grep` exist so

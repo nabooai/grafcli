@@ -4,3 +4,5 @@
 # committed fixtures and must NOT be caught by this.
 /*.sse
 .env
+__pycache__/
+*.egg-info/

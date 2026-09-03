@@ -28,6 +28,11 @@ Credentials are resolved in this order:
   3. GRAF_CF_AUTHORIZATION (a browser-issued CF_Authorization JWT)
   4. ~/.graf/.credentials.json, written by "graf auth login"
 
+The deployment's own bearer token (its GRAF_API_TOKEN, checked by the
+/api/cli endpoints steer/explore/run-query/harness use) resolves separately:
+GRAF_API_TOKEN, then the same credentials file. A loopback deployment
+(http://127.0.0.1:…) needs no credential at all.
+
 A .env in the working directory (or any parent, up to six levels) is read
 first and contributes those same variables WITHOUT overwriting anything
 already exported — so a real environment variable always wins.
@@ -49,7 +54,9 @@ mode 0600.
 
 Supply it as two lines (id then secret), as "id:secret", or as KEY=VALUE lines
 copied straight out of a .env — all three are accepted because all three are
-what people actually have in hand.`,
+what people actually have in hand. A GRAF_API_TOKEN=... line (or a lone bare
+token) stores the deployment's own bearer token; it is merged with whatever is
+already stored, so the two halves can be added in separate runs.`,
 		Example: `  graf auth login --with-token < token.txt
   printf '%s\n%s\n' "$ID" "$SECRET" | graf auth login --with-token
   graf auth login --with-token <<< "$ID:$SECRET"`,
@@ -66,7 +73,13 @@ what people actually have in hand.`,
 			if err != nil {
 				return err
 			}
-			if err := auth.Save(creds); err != nil {
+			// Overlay, never replace: storing the API token must not discard
+			// a service token stored earlier (or the reverse).
+			existing, _, err := auth.Load()
+			if err != nil {
+				return err
+			}
+			if err := auth.Save(existing.Merge(creds)); err != nil {
 				return err
 			}
 			p, _ := auth.Path()
@@ -98,6 +111,8 @@ func parseTokenInput(r *os.File) (auth.Credentials, error) {
 				creds.ClientSecret = v
 			case cfg.EnvCookie, "CF_Authorization":
 				creds.Cookie = v
+			case cfg.EnvAPIToken:
+				creds.APIToken = v
 			}
 			continue
 		}
@@ -115,8 +130,13 @@ func parseTokenInput(r *os.File) (auth.Credentials, error) {
 		case 2:
 			creds.ClientID, creds.ClientSecret = bare[0], bare[1]
 		case 1:
-			// A lone value can only be a session JWT; a service token is a pair.
-			creds.Cookie = bare[0]
+			// A lone value is a session JWT (three dot-separated segments) or
+			// the deployment's API token; a service token is always a pair.
+			if strings.Count(bare[0], ".") == 2 {
+				creds.Cookie = bare[0]
+			} else {
+				creds.APIToken = bare[0]
+			}
 		}
 	}
 	if creds.Empty() {
@@ -154,6 +174,13 @@ func newAuthStatusCmd() *cobra.Command {
 					auth.Redact(creds.ClientID), source)
 			case creds.Cookie != "":
 				fmt.Fprintf(out, "credential  CF_Authorization cookie (%s)\n", source)
+			default:
+				fmt.Fprintf(out, "credential  no Cloudflare Access credential\n")
+			}
+			if creds.APIToken != "" {
+				fmt.Fprintf(out, "api token   %s\n", auth.Redact(creds.APIToken))
+			} else {
+				fmt.Fprintf(out, "api token   none\n")
 			}
 
 			// A credential that parses is not a credential that works: the

@@ -106,7 +106,14 @@ func newClient(_ context.Context) (*api.Client, error) {
 	}
 	creds, _, err := auth.Resolve()
 	if err != nil {
-		return nil, err
+		// A deployment on this machine (a dev serve, an ssh tunnel) has no
+		// Access edge and may run with no token; only a MISSING credential is
+		// forgiven there, never a malformed one.
+		var ce *clierr.Error
+		if !(errors.As(err, &ce) && ce.ExitCode == clierr.Unauthenticated && cfg.IsLoopback(res.BaseURL)) {
+			return nil, err
+		}
+		creds = auth.Credentials{}
 	}
 	return &api.Client{
 		HTTP:      httpClient(),
@@ -127,6 +134,11 @@ GraphQL graph — from the command line.
 "graf ask" puts a question to the agent, which finds the source, writes the
 query and reports the rows. "graf query" runs GraphQL against the graph
 directly, with no model in the loop.
+
+The answering harness is also exposed one stage at a time: "graf steer" shows
+what the agent is told about a question before it picks a tool, "graf explore"
+runs its explore_schema tool, "graf run-query" runs its run_query tool, and
+"graf harness" runs the whole pipeline single-shot with receipts.
 
 Output contract:
   stdout carries only the payload. Progress, warnings and errors go to stderr,
@@ -156,6 +168,10 @@ Exit codes:
 
 	root.AddCommand(
 		newAskCmd(),
+		newSteerCmd(),
+		newExploreCmd(),
+		newRunQueryCmd(),
+		newHarnessCmd(),
 		newChatsCmd(),
 		newQueryCmd(),
 		newSchemaCmd(),

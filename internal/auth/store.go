@@ -28,11 +28,35 @@ type Credentials struct {
 	// so; kept because copying one out of devtools is sometimes the fastest way
 	// to get unblocked.
 	Cookie string `json:"cf_authorization,omitempty"`
+	// APIToken is the graf deployment's OWN bearer token (its GRAF_API_TOKEN),
+	// sent as "Authorization: Bearer". Independent of the Access edge: a
+	// deployment can require one, the other, or both.
+	APIToken string `json:"api_token,omitempty"`
 }
 
 // Empty reports whether nothing usable is held.
 func (c Credentials) Empty() bool {
-	return (c.ClientID == "" || c.ClientSecret == "") && c.Cookie == ""
+	return !c.HasAccess() && c.APIToken == ""
+}
+
+// HasAccess reports whether a Cloudflare Access credential is held.
+func (c Credentials) HasAccess() bool {
+	return (c.ClientID != "" && c.ClientSecret != "") || c.Cookie != ""
+}
+
+// Merge overlays the non-empty fields of `over` onto c — how "auth login"
+// stores a token without discarding a previously stored service token.
+func (c Credentials) Merge(over Credentials) Credentials {
+	if over.ClientID != "" && over.ClientSecret != "" {
+		c.ClientID, c.ClientSecret = over.ClientID, over.ClientSecret
+	}
+	if over.Cookie != "" {
+		c.Cookie = over.Cookie
+	}
+	if over.APIToken != "" {
+		c.APIToken = over.APIToken
+	}
+	return c
 }
 
 // Source names where a credential came from, for `auth status` and `doctor`.
@@ -106,20 +130,27 @@ func Delete() error {
 
 // Resolve returns the credential to use, in precedence order: environment
 // (including anything a .env contributed, which is imported into the
-// environment without overwriting it), then the stored file.
+// environment without overwriting it), then the stored file. The two halves —
+// the Cloudflare Access credential and the deployment's own API token — are
+// resolved independently, so a service token from the environment and a stored
+// API token combine.
 //
 // Credentials are never accepted as command-line arguments — argv is
 // world-readable through /proc and `ps`.
 func Resolve() (Credentials, Source, error) {
+	var c Credentials
+	source := SourceNone
+
 	id := firstEnv(cfg.EnvClientID, cfg.EnvAltClientID)
 	secret := firstEnv(cfg.EnvClientSecret, cfg.EnvAltClientSecret)
-	if id != "" && secret != "" {
-		return Credentials{ClientID: id, ClientSecret: secret}, SourceEnv, nil
-	}
-	// A half-configured service token is nearly always a typo in one of the two
-	// variable names, and it fails at the edge with an opaque redirect to a
-	// login page. Say so here instead.
-	if id != "" || secret != "" {
+	switch {
+	case id != "" && secret != "":
+		c.ClientID, c.ClientSecret = id, secret
+		source = SourceEnv
+	case id != "" || secret != "":
+		// A half-configured service token is nearly always a typo in one of
+		// the two variable names, and it fails at the edge with an opaque
+		// redirect to a login page. Say so here instead.
 		missing := cfg.EnvClientSecret
 		if id == "" {
 			missing = cfg.EnvClientID
@@ -127,9 +158,17 @@ func Resolve() (Credentials, Source, error) {
 		return Credentials{}, SourceNone, clierr.New("unauthenticated", clierr.Unauthenticated,
 			"incomplete Cloudflare Access service token: %s is not set", missing).
 			WithHint("a service token is a pair; both halves must be present")
+	default:
+		if ck := strings.TrimSpace(os.Getenv(cfg.EnvCookie)); ck != "" {
+			c.Cookie = ck
+			source = SourceEnv
+		}
 	}
-	if ck := strings.TrimSpace(os.Getenv(cfg.EnvCookie)); ck != "" {
-		return Credentials{Cookie: ck}, SourceEnv, nil
+	if tok := firstEnv(cfg.EnvAPIToken); tok != "" {
+		c.APIToken = tok
+		if source == SourceNone {
+			source = SourceEnv
+		}
 	}
 
 	stored, ok, err := Load()
@@ -137,9 +176,23 @@ func Resolve() (Credentials, Source, error) {
 		return Credentials{}, SourceNone, err
 	}
 	if ok {
-		return stored, SourceFile, nil
+		if !c.HasAccess() && stored.HasAccess() {
+			c.ClientID, c.ClientSecret, c.Cookie = stored.ClientID, stored.ClientSecret, stored.Cookie
+			if source == SourceNone {
+				source = SourceFile
+			}
+		}
+		if c.APIToken == "" && stored.APIToken != "" {
+			c.APIToken = stored.APIToken
+			if source == SourceNone {
+				source = SourceFile
+			}
+		}
 	}
-	return Credentials{}, SourceNone, clierr.NotLoggedIn()
+	if c.Empty() {
+		return Credentials{}, SourceNone, clierr.NotLoggedIn()
+	}
+	return c, source, nil
 }
 
 func firstEnv(keys ...string) string {

@@ -37,7 +37,11 @@ setting is **flag > environment > config file > default**.
   "model": "gemini/gemini-3.8-flash",
   "reasoning": "low",
   "fda_version": 14,
-  "auto_update": true
+  "auto_update": true,
+  "headers": {
+    "CF-Access-Client-Id": "…",
+    "CF-Access-Client-Secret": "…"
+  }
 }
 ```
 
@@ -48,12 +52,15 @@ setting is **flag > environment > config file > default**.
 | `reasoning` | `GRAF_REASONING` / `--reasoning` | reasoning effort for agent turns; default: the server's |
 | `fda_version` | `--fda-version` | agent version `ask` runs (default 14, the answering agent) |
 | `auto_update` | `GRAF_NO_UPDATE=1` to disable | the once-a-day background self-update (default on) |
+| `headers` | config file only | a map of extra headers sent on EVERY request — the home for the Cloudflare Access service token (`CF-Access-Client-Id` / `CF-Access-Client-Secret`) or a proxy's auth header. `graf config set headers.<Name> <value>`, `config unset headers.<Name>`; `config list` redacts the values, `config get headers.<Name>` prints one whole. With the service token here, no `auth login` is needed. |
 
 Edit it with the CLI rather than by hand — `config set` rewrites only its own keys and refuses
 to touch a file it cannot parse:
 
 ```sh
 graf config set base_url https://graf.nissimtech.com
+graf config set headers.CF-Access-Client-Id "$ID"
+graf config set headers.CF-Access-Client-Secret "$SECRET"
 graf config set auto_update false
 graf config list --explain      # every setting and where it came from
 graf config get model

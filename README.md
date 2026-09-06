@@ -30,10 +30,16 @@ uv tool install git+https://github.com/nabooai/grafcli      # puts `graf` on PAT
 ```
 
 `uvx` installs a tiny Python launcher that fetches the release binary for your
-OS/arch into `~/.graf/bin/` on first run (the repository is private, so it
+OS/arch into `~/.naboo/bin/graf` on first run (the repository is private, so it
 needs a GitHub token: `gh auth login`, or `GH_TOKEN`) and execs it; when no
 release is reachable it builds from the sources shipped inside the wheel,
 given a Go toolchain on PATH. `GRAF_BIN=/path/to/graf` skips all of that.
+
+From then on **the binary keeps itself current**: every command spawns
+`graf update --quiet` in the background at most once a day, which installs
+the latest release in place (checksum-verified) and says so on the next run.
+`graf update` does it in the foreground; `graf update --check` only reports;
+`graf config set auto_update false` (or `GRAF_NO_UPDATE=1`) turns it off.
 
 Or build from source (Go 1.22+):
 
@@ -70,9 +76,10 @@ Credentials are never accepted as command-line arguments — argv is readable by
 every other process on the machine.
 
 The harness commands (`steer`, `explore`, `run-query`, `harness`) additionally
-carry the deployment's **own** bearer token when it sets one (`GRAF_API_TOKEN`
-on the server). Store it the same way — it is merged with whatever is already
-stored, so the two halves can be added separately:
+carry a bearer for the deployment itself: either an **API key** minted in the
+web UI (Security → API keys — shown once, revocable per key) or the
+deployment-wide `GRAF_API_TOKEN`. Store it the same way — it is merged with
+whatever is already stored, so the two halves can be added separately:
 
 ```sh
 echo "GRAF_API_TOKEN=..." | graf auth login --with-token
@@ -84,20 +91,23 @@ credential at all.
 | Variable | Holds |
 |---|---|
 | `GRAF_CF_ACCESS_CLIENT_ID` / `..._SECRET` | the service token |
-| `GRAF_API_TOKEN` | the deployment's own bearer token (its `/api/cli` gate) |
+| `GRAF_API_TOKEN` | an API key from Security → API keys, or the deployment-wide token (the `/api/cli` gate) |
+| `GRAF_NO_UPDATE` | set to disable the background self-update |
 | `CLOUDFLARE_ACCESS_CLIENT_ID` / `..._SECRET` | the same, under Cloudflare's own spelling |
 | `GRAF_CF_AUTHORIZATION` | a browser-issued `CF_Authorization` JWT, for a one-off |
 | `GRAF_URL` | the deployment to talk to |
-| `GRAF_CONFIG_DIR` | where `~/.graf` lives |
+| `GRAF_CONFIG_DIR` | where `~/.naboo` lives |
 | `GRAF_NO_DOTENV` | set to disable `.env` discovery entirely |
 
 ## Files
 
 | Path | Holds |
 |---|---|
-| `~/.graf/config.json` | settings (`base_url`, `model`, `reasoning`, `fda_version`) |
-| `~/.graf/.credentials.json` | credentials (service token and/or API token), mode `0600` |
-| `~/.graf/bin/` | binaries the `uvx` launcher fetched or built |
+| `~/.naboo/config.json` | settings (`base_url`, `model`, `reasoning`, `fda_version`, `auto_update`) |
+| `~/.naboo/.credentials.json` | credentials (service token and/or API key), mode `0600` |
+| `~/.naboo/bin/graf` | the binary the `uvx` launcher installed; self-updates in place |
+| `~/.naboo/update.json` | when the last update check ran and what it found |
+| `~/.graf/` | the pre-0.2 location — still read when a file is missing above, never written |
 
 `config set` rewrites only its own keys and leaves everything else in the file
 untouched; it refuses outright if the file cannot be parsed, rather than

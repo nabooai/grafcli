@@ -151,8 +151,9 @@ Exit codes:
   Retry only 8, 9, 10 and 13. Run "graf help exit-codes" for the full table.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		PersistentPreRun: func(*cobra.Command, []string) {
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
 			loadEnvFiles()
+			backgroundUpdate(cmd)
 		},
 	}
 
@@ -181,6 +182,7 @@ Exit codes:
 		newDoctorCmd(),
 		newReplayCmd(),
 		newManifestCmd(),
+		newUpdateCmd(),
 		newVersionCmd(),
 		newExitCodesTopic(),
 	)

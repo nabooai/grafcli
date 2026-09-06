@@ -210,3 +210,38 @@ func contains(haystack, needle string) bool {
 		return false
 	})()
 }
+
+func TestDirIsNabooWithLegacyFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GRAF_CONFIG_DIR", "")
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
+	d, err := Dir()
+	if err != nil || d != filepath.Join(home, ".naboo") {
+		t.Fatalf("Dir() = %q (%v)", d, err)
+	}
+	// only the legacy ~/.graf/config.json exists: its keys are read
+	legacy := filepath.Join(home, ".graf")
+	os.MkdirAll(legacy, 0o700)
+	os.WriteFile(filepath.Join(legacy, "config.json"), []byte(`{"base_url":"https://legacy.example","model":"m"}`), 0o600)
+	c, err := Load()
+	if err != nil || c.BaseURL != "https://legacy.example" || c.Model != "m" {
+		t.Fatalf("legacy fallback: %+v (%v)", c, err)
+	}
+	// ~/.naboo wins per key, and a Save writes ONLY there
+	off := false
+	if err := Save(Config{BaseURL: "https://new.example", AutoUpdate: &off}); err != nil {
+		t.Fatal(err)
+	}
+	c, _ = Load()
+	if c.BaseURL != "https://new.example" || c.Model != "m" || c.AutoUpdateEnabled() {
+		t.Errorf("merged: %+v", c)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".naboo", "config.json")); err != nil {
+		t.Error("Save did not write ~/.naboo/config.json")
+	}
+	b, _ := os.ReadFile(filepath.Join(legacy, "config.json"))
+	if string(b) != `{"base_url":"https://legacy.example","model":"m"}` {
+		t.Error("Save touched the legacy file")
+	}
+}

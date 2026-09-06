@@ -88,9 +88,21 @@ func Load() (Credentials, bool, error) {
 	}
 	b, err := os.ReadFile(p)
 	if os.IsNotExist(err) {
-		return c, false, nil
-	}
-	if err != nil {
+		// The pre-0.2 ~/.graf file is read (never written) when the new
+		// location has nothing.
+		if ld := cfg.LegacyDir(); ld != "" {
+			lp := filepath.Join(ld, ".credentials.json")
+			if b, err = os.ReadFile(lp); err == nil {
+				p = lp
+			}
+		}
+		if err != nil {
+			if os.IsNotExist(err) {
+				return c, false, nil
+			}
+			return c, false, err
+		}
+	} else if err != nil {
 		return c, false, err
 	}
 	if err := json.Unmarshal(b, &c); err != nil {

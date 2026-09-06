@@ -50,9 +50,15 @@ the GraphQL the agent actually ran — the most reusable thing a turn produces.
 
 - **Never pass a credential on argv.** There is no `--token` flag. Use the
   environment, a `.env`, or `graf auth login --with-token` reading stdin.
-  The harness commands need the deployment's own bearer token too when it
-  sets one: `GRAF_API_TOKEN` (env, `.env`, or stored the same way). A
-  loopback `--url` needs no credential.
+  The harness commands need a bearer for the deployment too: an API key
+  from the web UI (Security → API keys) or the deployment-wide token, as
+  `GRAF_API_TOKEN` (env, `.env`, or stored the same way). A loopback
+  `--url` needs no credential.
+- **The binary updates itself.** Every command may spawn `graf update
+  --quiet` in the background (once a day); a version bump between two runs
+  is expected, not an anomaly. Pin behaviour with `GRAF_NO_UPDATE=1` in a
+  reproducible pipeline; `graf update --check --json` reports without
+  installing.
 - **`run-query` exit 14 carries the tool's error text.** It names the valid
   fields; fix the query, do not retry it unchanged. Exit 10 from `harness`
   after a long wait is usually the server's turn cap — raise `--max-turns`

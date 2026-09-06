@@ -93,7 +93,7 @@ func TestManifestNeedsNoCredential(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"ask", "query", "schema", "chats", "auth", "config", "doctor", "sources",
-		"steer", "explore", "run-query", "harness"} {
+		"steer", "explore", "run-query", "harness", "update"} {
 		if !found[want] {
 			t.Errorf("manifest omits the %q command", want)
 		}

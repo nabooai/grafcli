@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"text/tabwriter"
 
@@ -14,7 +15,7 @@ func newConfigCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "config",
 		Short: "Read and write the CLI's own settings",
-		Long: `Settings live in ~/.graf/config.json. Precedence is flag > environment >
+		Long: `Settings live in ~/.naboo/config.json (~/.graf/config.json, the pre-0.2 location, is still read). Precedence is flag > environment >
 config file > default; "graf config list --explain" shows which one supplied
 each value.
 
@@ -26,7 +27,7 @@ data sources and endpoints — is a different thing, and is read with
 	return c
 }
 
-var configKeys = []string{"base_url", "model", "reasoning", "fda_version"}
+var configKeys = []string{"base_url", "model", "reasoning", "fda_version", "auto_update"}
 
 func newConfigListCmd() *cobra.Command {
 	var explain bool
@@ -88,6 +89,12 @@ func newConfigGetCmd() *cobra.Command {
 				v = res.Reasoning
 			case "fda_version":
 				v = strconv.Itoa(res.FdaVersion)
+			case "auto_update":
+				file, err := cfg.Load()
+				if err != nil {
+					return err
+				}
+				v = strconv.FormatBool(file.AutoUpdateEnabled() && os.Getenv(cfg.EnvNoUpdate) == "")
 			default:
 				return unknownKey(args[0])
 			}
@@ -126,6 +133,12 @@ func newConfigSetCmd() *cobra.Command {
 					return clierr.Usagef("fda_version must be a number, got %q", value)
 				}
 				current.FdaVersion = n
+			case "auto_update":
+				b, err := strconv.ParseBool(value)
+				if err != nil {
+					return clierr.Usagef("auto_update must be true or false, got %q", value)
+				}
+				current.AutoUpdate = &b
 			default:
 				return unknownKey(key)
 			}

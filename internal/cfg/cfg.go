@@ -66,6 +66,13 @@ const (
 	// EnvAPIToken is the deployment's own bearer token — the one the graf serve
 	// checks on its /api/cli endpoints (GRAF_API_TOKEN on the server side).
 	EnvAPIToken = "GRAF_API_TOKEN"
+	// EnvNoUpdate disables the background self-update entirely.
+	EnvNoUpdate = "GRAF_NO_UPDATE"
+
+	// DirName is the per-user directory under $HOME: ~/.naboo. ~/.graf is the
+	// pre-0.2 location and is still READ (never written) as a fallback.
+	DirName       = ".naboo"
+	LegacyDirName = ".graf"
 )
 
 // Config is the on-disk settings file. Secrets are excluded by construction.
@@ -74,6 +81,14 @@ type Config struct {
 	Model      string `json:"model,omitempty"`
 	Reasoning  string `json:"reasoning,omitempty"`
 	FdaVersion int    `json:"fda_version,omitempty"`
+	// AutoUpdate, when false, disables the background self-update. Absent
+	// (nil) means on.
+	AutoUpdate *bool `json:"auto_update,omitempty"`
+}
+
+// AutoUpdateEnabled reports whether the background self-update may run.
+func (c Config) AutoUpdateEnabled() bool {
+	return c.AutoUpdate == nil || *c.AutoUpdate
 }
 
 // Resolved is the effective configuration plus the origin of each value, so
@@ -99,7 +114,20 @@ func Dir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".graf"), nil
+	return filepath.Join(home, DirName), nil
+}
+
+// LegacyDir is the pre-0.2 ~/.graf, read when a file is absent from Dir().
+// Empty when GRAF_CONFIG_DIR is set (an explicit dir has no legacy twin).
+func LegacyDir() string {
+	if os.Getenv(EnvConfigDir) != "" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, LegacyDirName)
 }
 
 // fallbackPath is the XDG location, read when a key is absent from Dir().
@@ -153,7 +181,19 @@ func Load() (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	if fb := fallbackPath(); fb != "" && fb != p {
+	// Per-key fallbacks, in order: the legacy ~/.graf/config.json, then the
+	// XDG location. Neither is ever written.
+	var fallbacks []string
+	if ld := LegacyDir(); ld != "" {
+		fallbacks = append(fallbacks, filepath.Join(ld, "config.json"))
+	}
+	if fb := fallbackPath(); fb != "" {
+		fallbacks = append(fallbacks, fb)
+	}
+	for _, fb := range fallbacks {
+		if fb == p {
+			continue
+		}
 		alt, err := readFile(fb)
 		if err != nil {
 			return c, err
@@ -169,6 +209,9 @@ func Load() (Config, error) {
 		}
 		if c.FdaVersion == 0 {
 			c.FdaVersion = alt.FdaVersion
+		}
+		if c.AutoUpdate == nil {
+			c.AutoUpdate = alt.AutoUpdate
 		}
 	}
 	return c, nil
@@ -227,6 +270,13 @@ func Save(c Config) error {
 	}
 	if err := set("fda_version", c.FdaVersion); err != nil {
 		return err
+	}
+	if c.AutoUpdate != nil {
+		raw, err := json.Marshal(*c.AutoUpdate)
+		if err != nil {
+			return err
+		}
+		doc["auto_update"] = raw
 	}
 
 	b, err := json.MarshalIndent(doc, "", "  ")

@@ -20,7 +20,7 @@ func newDoctorCmd() *cobra.Command {
 		Short: "Check connectivity, credentials and the graph's health",
 		Long: `Run the checks that explain most failures, in the order they break:
 credential resolution, the Access edge, the API, the schema, and the file
-permissions on ~/.graf.
+permissions on ~/.naboo.
 
 Exits non-zero if any check fails, so it can gate a script.`,
 		Args: cobra.NoArgs,

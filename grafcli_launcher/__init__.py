@@ -5,7 +5,9 @@ from any machine with `uv` and nothing else: it locates a `graf` binary for this
 execs it with the arguments untouched. Resolution order:
 
 1. ``$GRAF_BIN`` — an explicit binary (a local `make build`, a pinned download).
-2. The cache: ``~/.graf/bin/graf-<version>`` (``$GRAF_CONFIG_DIR`` moves ``~/.graf``).
+2. The installed binary: ``~/.naboo/bin/graf`` (``$GRAF_CONFIG_DIR`` moves ``~/.naboo``). Once
+   it exists the CLI keeps ITSELF current (``graf update``, run in the background at most once
+   a day), so this launcher's own version only matters for the first install.
 3. The GitHub release ``v<version>`` of nabooai/grafcli: the archive goreleaser publishes for
    this OS/arch. The repository is private, so a GitHub token is needed — ``$GH_TOKEN`` /
    ``$GITHUB_TOKEN``, or ``gh auth token`` when the gh CLI is logged in.
@@ -64,7 +66,7 @@ def _platform() -> tuple[str, str]:
 
 
 def _cache_dir() -> Path:
-    base = os.environ.get("GRAF_CONFIG_DIR") or str(Path.home() / ".graf")
+    base = os.environ.get("GRAF_CONFIG_DIR") or str(Path.home() / ".naboo")
     d = Path(base) / "bin"
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -155,7 +157,7 @@ def resolve_binary() -> Path:
         return p
     version = _version()
     goos, goarch = _platform()
-    dest = _cache_dir() / (f"graf-{version}" + (".exe" if goos == "windows" else ""))
+    dest = _cache_dir() / ("graf.exe" if goos == "windows" else "graf")
     if dest.exists():
         return dest
     if _download(version, goos, goarch, dest):

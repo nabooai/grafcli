@@ -87,11 +87,7 @@ func backgroundUpdate(cmd *cobra.Command) {
 		return
 	}
 	switch cmd.Name() {
-	case "update", "version", "manifest", "help", "completion", "exit-codes", "__complete", "__completeNoDesc":
-		return
-	}
-	file, err := cfg.Load()
-	if err != nil || !file.AutoUpdateEnabled() {
+	case "update", "__complete", "__completeNoDesc":
 		return
 	}
 	st, err := update.LoadState()
@@ -104,6 +100,16 @@ func backgroundUpdate(cmd *cobra.Command) {
 		fmt.Fprintf(os.Stderr, "graf was updated to %s in the background\n", st.UpdatedTo)
 		st.UpdatedTo = ""
 		_ = update.SaveState(st)
+	}
+	// Commands that make no request of their own do not start a check either:
+	// an agent probing the manifest should not kick off a download.
+	switch cmd.Name() {
+	case "version", "manifest", "help", "completion", "exit-codes":
+		return
+	}
+	file, err := cfg.Load()
+	if err != nil || !file.AutoUpdateEnabled() {
+		return
 	}
 	if !update.Due(st, time.Now()) {
 		return

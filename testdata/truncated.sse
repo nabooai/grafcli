@@ -1,8 +1,0 @@
-event: ready
-data: {}
-
-data: {"type": "v13_step", "step": {"kind": "tool_call", "tool": "run_query", "args": {"query": "{ csa { sessionCount } }"}}}
-
-data: {"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": "There are "}}
-
-data: {"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": "3,020"}}
